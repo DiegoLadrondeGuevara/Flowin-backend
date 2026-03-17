@@ -10,6 +10,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.CrossOrigin;
 
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 3. New users request current state via REST endpoint
  */
 @Controller
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class MusicSyncController {
 
     private final SimpMessagingTemplate messagingTemplate;

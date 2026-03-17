@@ -17,6 +17,7 @@ import java.nio.file.Paths;
 
 @RestController
 @RequestMapping("/music")
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class MusicController {
 
     private final Path musicDirectory = Paths.get("src/main/resources/static/music"); // Cambia según tu estructura
