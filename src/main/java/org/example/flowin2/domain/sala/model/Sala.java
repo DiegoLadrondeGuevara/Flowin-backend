@@ -1,20 +1,24 @@
 package org.example.flowin2.domain.sala.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.example.flowin2.domain.chatMessage.ChatMessage;
 import org.example.flowin2.domain.usuario.model.Usuario;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Data
 @Entity
+@Table(name = "salas")
+@Getter
+@Setter
 public class Sala {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false)
     private String nombre;
 
     @ElementCollection
@@ -27,10 +31,10 @@ public class Sala {
     private List<String> canciones;
 
     @OneToMany(mappedBy = "sala")
-    private List<Usuario> usuariosConectados;
+    private List<Usuario> usuariosConectados = new ArrayList<>();
+
     @ManyToOne
     @JoinColumn(name = "host_id")
-    //verificar esto
     private Usuario host;
 
     @ElementCollection(fetch = FetchType.EAGER)
@@ -38,4 +42,15 @@ public class Sala {
     @OrderColumn(name = "message_index")
     private List<ChatMessage> mensajesChat = new ArrayList<>();
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Sala other)) return false;
+        return id != null && id.equals(other.getId());
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

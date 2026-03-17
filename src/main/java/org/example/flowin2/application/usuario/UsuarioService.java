@@ -1,39 +1,50 @@
 package org.example.flowin2.application.usuario;
 
-import org.example.flowin2.application.usuario.UserRegisteredEvent;
 import org.example.flowin2.domain.usuario.model.Usuario;
 import org.example.flowin2.domain.usuario.repository.UsuarioRepository;
 import org.example.flowin2.infrastructure.security.JwtService;
+import org.example.flowin2.shared.exceptions.ResourceConflictException;
 import org.example.flowin2.shared.exceptions.ResourceNotFoundException;
 import org.example.flowin2.web.dto.usuario.UsuarioRequest;
 import org.example.flowin2.web.dto.usuario.UsuarioResponse;
 import org.example.flowin2.web.dto.usuario.UsuarioUpdateArtistas;
 import org.example.flowin2.web.dto.usuario.UsuarioUpdateGustos;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.Optional;
 
 @Service
+@Transactional
 public class UsuarioService {
-    @Autowired
-    private ApplicationEventPublisher applicationEventPublisher;
 
-    @Autowired
-    private UsuarioRepository usuarioRepository;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final UsuarioRepository usuarioRepository;
+    private final ModelMapper modelMapper;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
-    @Autowired
-    private ModelMapper modelMapper;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private JwtService jwtService;
+    public UsuarioService(ApplicationEventPublisher applicationEventPublisher,
+                          UsuarioRepository usuarioRepository,
+                          ModelMapper modelMapper,
+                          PasswordEncoder passwordEncoder,
+                          JwtService jwtService) {
+        this.applicationEventPublisher = applicationEventPublisher;
+        this.usuarioRepository = usuarioRepository;
+        this.modelMapper = modelMapper;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+    }
 
     public UsuarioResponse save(UsuarioRequest usuarioRequest) {
+        // Check for existing username/email
+        if (usuarioRepository.findByUsername(usuarioRequest.getUsername()).isPresent()) {
+            throw new ResourceConflictException("El nombre de usuario '" + usuarioRequest.getUsername() + "' ya está en uso");
+        }
+
         applicationEventPublisher.publishEvent(
                 new UserRegisteredEvent(this, usuarioRequest.getMail())
         );
@@ -41,18 +52,51 @@ public class UsuarioService {
         Usuario usuario = modelMapper.map(usuarioRequest, Usuario.class);
         usuario.setPassword(passwordEncoder.encode(usuarioRequest.getPassword()));
         Usuario usuarioGuardado = usuarioRepository.save(usuario);
-        return modelMapper.map(usuarioGuardado, UsuarioResponse.class);
+        return mapUsuarioToResponse(usuarioGuardado);
     }
 
+    @Transactional(readOnly = true)
     public Optional<Usuario> findByUsername(String username) {
         return usuarioRepository.findByUsername(username);
     }
 
+    @Transactional(readOnly = true)
     public UsuarioResponse obtenerPerfil(String token) {
-        String username = jwtService.extractUserName(token.substring(7));
+        String cleanToken = stripBearer(token);
+        String username = jwtService.extractUserName(cleanToken);
         Usuario usuario = usuarioRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado para el token provisto."));
         return mapUsuarioToResponse(usuario);
+    }
+
+    public UsuarioResponse actualizarArtistasFavoritos(String token, UsuarioUpdateArtistas updateRequest) {
+        Usuario usuario = getUsuarioFromToken(token);
+        usuario.setArtistasFavoritos(updateRequest.getArtistasFavoritos());
+        Usuario actualizado = usuarioRepository.save(usuario);
+        return mapUsuarioToResponse(actualizado);
+    }
+
+    public UsuarioResponse actualizarGustosMusicales(String token, UsuarioUpdateGustos updateRequest) {
+        Usuario usuario = getUsuarioFromToken(token);
+        usuario.setGustosMusicales(updateRequest.getGustosMusicales());
+        Usuario actualizado = usuarioRepository.save(usuario);
+        return mapUsuarioToResponse(actualizado);
+    }
+
+    // --- Helper methods ---
+
+    private Usuario getUsuarioFromToken(String token) {
+        String cleanToken = stripBearer(token);
+        String username = jwtService.extractUserName(cleanToken);
+        return usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+    }
+
+    private String stripBearer(String token) {
+        if (token != null && token.startsWith("Bearer ")) {
+            return token.substring(7);
+        }
+        return token;
     }
 
     private UsuarioResponse mapUsuarioToResponse(Usuario usuario) {
@@ -65,25 +109,4 @@ public class UsuarioService {
         response.setArtistasFavoritos(usuario.getArtistasFavoritos());
         return response;
     }
-    public UsuarioResponse actualizarArtistasFavoritos(String token, UsuarioUpdateArtistas updateRequest) {
-        String username = jwtService.extractUserName(token.substring(7)); // sin "Bearer "
-        Usuario usuario = usuarioRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
-
-        usuario.setArtistasFavoritos(updateRequest.getArtistasFavoritos());
-        Usuario actualizado = usuarioRepository.save(usuario);
-
-        return mapUsuarioToResponse(actualizado);
-    }
-    public UsuarioResponse actualizarGustosMusicales(String token, UsuarioUpdateGustos updateRequest) {
-        String username = jwtService.extractUserName(token.substring(7)); // sin "Bearer "
-        Usuario usuario = usuarioRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
-
-        usuario.setArtistasFavoritos(updateRequest.getGustosMusicales());
-        Usuario actualizado = usuarioRepository.save(usuario);
-
-        return mapUsuarioToResponse(actualizado);
-    }
-
 }

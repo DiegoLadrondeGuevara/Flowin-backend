@@ -1,69 +1,78 @@
 package org.example.flowin2.application.sala;
 
+import org.example.flowin2.domain.sala.model.Estado;
 import org.example.flowin2.domain.sala.model.Sala;
 import org.example.flowin2.domain.sala.repository.SalaRepository;
 import org.example.flowin2.domain.usuario.model.Tipo;
 import org.example.flowin2.domain.usuario.model.Usuario;
 import org.example.flowin2.domain.usuario.repository.UsuarioRepository;
 import org.example.flowin2.infrastructure.security.JwtService;
+import org.example.flowin2.shared.exceptions.ResourceConflictException;
 import org.example.flowin2.shared.exceptions.ResourceNotFoundException;
 import org.example.flowin2.web.dto.sala.SalaRequest;
 import org.example.flowin2.web.dto.sala.SalaResponse;
 import org.example.flowin2.web.dto.sala.SalaUpdateRequest;
 import org.example.flowin2.web.dto.usuario.UsuarioResponse;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-
 @Service
+@Transactional
 public class SalaService {
-    @Autowired
-    private SalaRepository salaRepository;
-    @Autowired
-    private ModelMapper modelMapper;
-    @Autowired
-    private JwtService jwtService;
-    @Autowired
-    private UsuarioRepository usuarioRepository;
+
+    private final SalaRepository salaRepository;
+    private final ModelMapper modelMapper;
+    private final JwtService jwtService;
+    private final UsuarioRepository usuarioRepository;
+
+    public SalaService(SalaRepository salaRepository, ModelMapper modelMapper,
+                       JwtService jwtService, UsuarioRepository usuarioRepository) {
+        this.salaRepository = salaRepository;
+        this.modelMapper = modelMapper;
+        this.jwtService = jwtService;
+        this.usuarioRepository = usuarioRepository;
+    }
 
     public SalaResponse save(SalaRequest salaRequest, Usuario usuario) {
         Sala sala = modelMapper.map(salaRequest, Sala.class);
 
         sala.setHost(usuario);
-
         usuario.setTipo(Tipo.HOST);
         usuario.setSalaComoHost(sala);
-
         sala.setUsuariosConectados(List.of(usuario));
 
         Sala salaGuardada = salaRepository.save(sala);
-        return modelMapper.map(salaGuardada, SalaResponse.class);
+        return mapToResponse(salaGuardada);
     }
 
+    @Transactional(readOnly = true)
     public List<SalaResponse> buscarSalas(String nombre, String genero, String artista) {
         List<Sala> salas = salaRepository.findAll();
 
         return salas.stream()
-                .filter(sala -> (nombre == null || sala.getNombre().equalsIgnoreCase(nombre)) &&
-                        (genero == null || sala.getGenero().stream().anyMatch(genero::equals)))
+                .filter(sala -> sala.getEstado() == Estado.ACTIVA)
+                .filter(sala -> nombre == null || sala.getNombre().toLowerCase().contains(nombre.toLowerCase()))
+                .filter(sala -> genero == null || sala.getGenero().stream().anyMatch(g -> g.equalsIgnoreCase(genero)))
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
+    public SalaResponse unirUsuarioASala(String token, Long salaId) {
+        return unirUsuarioASala(token, salaId, null);
+    }
+
     public SalaResponse unirUsuarioASala(String token, Long salaId, String salaNombre) {
-        String username = jwtService.extractUserName(token.substring(7));
-        Usuario usuario = usuarioRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
+        Usuario usuario = getUsuarioFromToken(token);
 
         Sala sala = salaRepository.findById(salaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sala no encontrada con ID: " + salaId));
 
-        if (!sala.getNombre().equalsIgnoreCase(salaNombre)) {
+        if (salaNombre != null && !sala.getNombre().equalsIgnoreCase(salaNombre)) {
             throw new IllegalArgumentException("Nombre de sala incorrecto");
         }
 
@@ -75,26 +84,8 @@ public class SalaService {
         return mapToResponse(sala);
     }
 
-    public SalaResponse unirUsuarioASala(String token, Long salaId) {
-        String username = jwtService.extractUserName(token.substring(7));
-        Usuario usuario = usuarioRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
-
-        Sala sala = salaRepository.findById(salaId)
-                .orElseThrow(() -> new ResourceNotFoundException("Sala no encontrada con ID: " + salaId));
-
-        if (!sala.getUsuariosConectados().contains(usuario)) {
-            sala.getUsuariosConectados().add(usuario);
-            salaRepository.save(sala);
-        }
-
-        return mapToResponse(sala);
-    }
-
     public SalaResponse actualizarSalaComoHost(Long id, SalaUpdateRequest request, String token) {
-        String username = jwtService.extractUserName(token.substring(7));
-        Usuario host = usuarioRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
+        Usuario host = getUsuarioFromToken(token);
 
         Sala sala = salaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sala no encontrada con ID: " + id));
@@ -111,6 +102,33 @@ public class SalaService {
         return mapToResponse(sala);
     }
 
+    public void salirDeSala(Usuario usuario) {
+        if (usuario.getTipo() == Tipo.HOST && usuario.getSalaComoHost() != null) {
+            Sala sala = usuario.getSalaComoHost();
+            sala.setHost(null);
+            sala.setEstado(Estado.INACTIVA);
+
+            usuario.setTipo(Tipo.USUARIO);
+            usuario.setSalaComoHost(null);
+
+            salaRepository.save(sala);
+        } else {
+            throw new ResourceConflictException("No eres host de ninguna sala");
+        }
+    }
+
+    // --- Helper methods ---
+
+    private Usuario getUsuarioFromToken(String token) {
+        String cleanToken = token;
+        if (token != null && token.startsWith("Bearer ")) {
+            cleanToken = token.substring(7);
+        }
+        String username = jwtService.extractUserName(cleanToken);
+        return usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
+    }
+
     private SalaResponse mapToResponse(Sala sala) {
         SalaResponse response = modelMapper.map(sala, SalaResponse.class);
 
@@ -119,7 +137,6 @@ public class SalaService {
                 .collect(Collectors.toList());
 
         response.setUsuariosConectados(usuariosConectados);
-
         return response;
     }
 }

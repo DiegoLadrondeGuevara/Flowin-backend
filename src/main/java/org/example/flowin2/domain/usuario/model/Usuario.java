@@ -1,22 +1,28 @@
 package org.example.flowin2.domain.usuario.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.example.flowin2.domain.sala.model.Sala;
 
 import java.util.List;
 
 @Entity
-@Data
+@Table(name = "usuarios")
+@Getter
+@Setter
 public class Usuario {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true, nullable = false)
     private String username;
 
+    @Column(unique = true, nullable = false)
     private String mail;
 
+    @Column(nullable = false)
     private String password;
 
     @ElementCollection
@@ -34,4 +40,16 @@ public class Usuario {
 
     @OneToOne
     private Sala salaComoHost;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Usuario other)) return false;
+        return id != null && id.equals(other.getId());
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

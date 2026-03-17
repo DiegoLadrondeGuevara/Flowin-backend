@@ -13,7 +13,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
-import java.util.List;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
@@ -42,26 +42,30 @@ class ChatWebSocketControllerTest {
         // Arrange
         String token = "Bearer testToken";
         String username = "testUser";
-        String salaId = "123";
+        Long salaIdLong = 123L;
         String contenido = "Hola!";
+
         ChatMessageDTO messageDTO = new ChatMessageDTO();
-        messageDTO.setSalaId(Long.valueOf(salaId));
+        messageDTO.setSalaId(salaIdLong);
         messageDTO.setContenido(contenido);
 
-        List<ChatMessage> mensajesActualizados = List.of(new ChatMessage());
-        when(jwtService.extractUserName("testToken")).thenReturn(username);
-        when(chatService.guardarMensaje(Long.valueOf(salaId), username, contenido)).thenReturn(mensajesActualizados);
+        ChatMessage nuevoMensaje = new ChatMessage(username, contenido, LocalDateTime.now());
 
+        when(jwtService.extractUserName("testToken")).thenReturn(username);
+        when(chatService.guardarMensaje(salaIdLong, username, contenido)).thenReturn(nuevoMensaje);
+
+        // Act
         chatWebSocketController.enviarMensaje(messageDTO, token);
 
+        // Assert
         verify(jwtService).extractUserName("testToken");
-        verify(chatService).guardarMensaje(Long.valueOf(salaId), username, contenido);
+        verify(chatService).guardarMensaje(salaIdLong, username, contenido);
 
         ArgumentCaptor<String> destinationCaptor = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<List<ChatMessage>> messagesCaptor = ArgumentCaptor.forClass(List.class);
-        verify(messagingTemplate).convertAndSend(destinationCaptor.capture(), messagesCaptor.capture());
+        ArgumentCaptor<ChatMessage> messageCaptor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messagingTemplate).convertAndSend(destinationCaptor.capture(), messageCaptor.capture());
 
-        assertEquals("/topic/sala/" + salaId, destinationCaptor.getValue());
-        assertEquals(mensajesActualizados, messagesCaptor.getValue());
+        assertEquals("/topic/sala/" + salaIdLong, destinationCaptor.getValue());
+        assertEquals(nuevoMensaje, messageCaptor.getValue());
     }
 }

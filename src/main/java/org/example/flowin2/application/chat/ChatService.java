@@ -3,6 +3,7 @@ package org.example.flowin2.application.chat;
 import org.example.flowin2.domain.chatMessage.ChatMessage;
 import org.example.flowin2.domain.sala.model.Sala;
 import org.example.flowin2.domain.sala.repository.SalaRepository;
+import org.example.flowin2.shared.exceptions.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,20 +20,23 @@ public class ChatService {
         this.salaRepository = salaRepository;
     }
 
-    public List<ChatMessage> guardarMensaje(Long salaId, String username, String contenido) {
+    /**
+     * Saves a new chat message and returns ONLY the new message (not the full list).
+     */
+    public ChatMessage guardarMensaje(Long salaId, String username, String contenido) {
         Sala sala = salaRepository.findById(salaId)
-                .orElseThrow(() -> new RuntimeException("Sala no encontrada"));
+                .orElseThrow(() -> new ResourceNotFoundException("Sala no encontrada con ID: " + salaId));
 
         ChatMessage nuevo = new ChatMessage(username, contenido, LocalDateTime.now());
 
         List<ChatMessage> mensajes = sala.getMensajesChat();
         if (mensajes.size() >= 100) {
-            mensajes.remove(0); // elimina el más antiguo
+            mensajes.remove(0);
         }
 
         mensajes.add(nuevo);
         salaRepository.save(sala);
 
-        return mensajes;
+        return nuevo; // Return only the new message
     }
 }
