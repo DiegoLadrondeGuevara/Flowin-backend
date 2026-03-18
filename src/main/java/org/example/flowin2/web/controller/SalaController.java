@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 
 import java.util.List;
 
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+
 @RestController
 @RequestMapping("/sala")
 @CrossOrigin(origins = "*", allowedHeaders = "*")
@@ -23,10 +25,12 @@ public class SalaController {
 
     private final SalaService salaService;
     private final UsuarioService usuarioService;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    public SalaController(SalaService salaService, UsuarioService usuarioService) {
+    public SalaController(SalaService salaService, UsuarioService usuarioService, SimpMessagingTemplate messagingTemplate) {
         this.salaService = salaService;
         this.usuarioService = usuarioService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @PostMapping
@@ -39,7 +43,23 @@ public class SalaController {
     @PostMapping("/salir")
     public ResponseEntity<String> salirDeSala() {
         Usuario usuario = getAuthenticatedUsuario();
+        boolean eraHost = usuario.getTipo() == org.example.flowin2.domain.usuario.model.Tipo.HOST;
+        Long unbindingSalaId = null;
+
+        if (eraHost && usuario.getSalaComoHost() != null) {
+            unbindingSalaId = usuario.getSalaComoHost().getId();
+        }
+
         salaService.salirDeSala(usuario);
+
+        if (eraHost && unbindingSalaId != null) {
+            // Avisar a los oyentes que la sala fue cerrada
+            messagingTemplate.convertAndSend(
+                    "/topic/sala/" + unbindingSalaId, 
+                    "{\"type\":\"ROOM_CLOSED\",\"contenido\":\"El Host ha cerrado la sala.\"}"
+            );
+        }
+
         return ResponseEntity.ok("Saliste de la sala correctamente");
     }
 
