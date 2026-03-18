@@ -40,7 +40,7 @@ public class SalaController {
     public ResponseEntity<String> salirDeSala() {
         Usuario usuario = getAuthenticatedUsuario();
         salaService.salirDeSala(usuario);
-        return ResponseEntity.ok("Saliste de la sala y perdiste el rol de HOST");
+        return ResponseEntity.ok("Saliste de la sala correctamente");
     }
 
     @GetMapping("/buscar")

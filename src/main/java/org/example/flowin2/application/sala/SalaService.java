@@ -7,7 +7,6 @@ import org.example.flowin2.domain.usuario.model.Tipo;
 import org.example.flowin2.domain.usuario.model.Usuario;
 import org.example.flowin2.domain.usuario.repository.UsuarioRepository;
 import org.example.flowin2.infrastructure.security.JwtService;
-import org.example.flowin2.shared.exceptions.ResourceConflictException;
 import org.example.flowin2.shared.exceptions.ResourceNotFoundException;
 import org.example.flowin2.web.dto.sala.SalaRequest;
 import org.example.flowin2.web.dto.sala.SalaResponse;
@@ -113,7 +112,14 @@ public class SalaService {
 
             salaRepository.save(sala);
         } else {
-            throw new ResourceConflictException("No eres host de ninguna sala");
+            // Para usuarios oyentes, lo removemos de las salas conectadas
+            List<Sala> salas = salaRepository.findAll();
+            for (Sala s : salas) {
+                if (s.getUsuariosConectados().contains(usuario)) {
+                    s.getUsuariosConectados().remove(usuario);
+                    salaRepository.save(s);
+                }
+            }
         }
     }
 
