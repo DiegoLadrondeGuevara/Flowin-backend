@@ -19,6 +19,7 @@ services:
     container_name: flowin-backend
     restart: always
     ports:
+      - "80:8080"
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=prod
