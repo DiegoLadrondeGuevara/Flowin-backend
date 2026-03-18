@@ -13,6 +13,7 @@ import org.example.flowin2.web.dto.sala.SalaResponse;
 import org.example.flowin2.web.dto.sala.SalaUpdateRequest;
 import org.example.flowin2.web.dto.usuario.UsuarioResponse;
 import org.modelmapper.ModelMapper;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,13 +29,16 @@ public class SalaService {
     private final ModelMapper modelMapper;
     private final JwtService jwtService;
     private final UsuarioRepository usuarioRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public SalaService(SalaRepository salaRepository, ModelMapper modelMapper,
-                       JwtService jwtService, UsuarioRepository usuarioRepository) {
+                       JwtService jwtService, UsuarioRepository usuarioRepository,
+                       SimpMessagingTemplate messagingTemplate) {
         this.salaRepository = salaRepository;
         this.modelMapper = modelMapper;
         this.jwtService = jwtService;
         this.usuarioRepository = usuarioRepository;
+        this.messagingTemplate = messagingTemplate;
     }
 
     public SalaResponse save(SalaRequest salaRequest, Usuario usuario) {
@@ -46,7 +50,9 @@ public class SalaService {
         sala.setUsuariosConectados(List.of(usuario));
 
         Sala salaGuardada = salaRepository.save(sala);
-        return mapToResponse(salaGuardada);
+        SalaResponse response = mapToResponse(salaGuardada);
+        broadcastSalasActivas();
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -78,6 +84,7 @@ public class SalaService {
         if (!sala.getUsuariosConectados().contains(usuario)) {
             sala.getUsuariosConectados().add(usuario);
             salaRepository.save(sala);
+            broadcastSalasActivas();
         }
 
         return mapToResponse(sala);
@@ -98,6 +105,7 @@ public class SalaService {
         if (request.getCanciones() != null) sala.setCanciones(request.getCanciones());
 
         salaRepository.save(sala);
+        broadcastSalasActivas();
         return mapToResponse(sala);
     }
 
@@ -111,19 +119,34 @@ public class SalaService {
             usuario.setSalaComoHost(null);
 
             salaRepository.save(sala);
+            broadcastSalasActivas();
         } else {
             // Para usuarios oyentes, lo removemos de las salas conectadas
             List<Sala> salas = salaRepository.findAll();
+            boolean changed = false;
             for (Sala s : salas) {
                 if (s.getUsuariosConectados().contains(usuario)) {
                     s.getUsuariosConectados().remove(usuario);
                     salaRepository.save(s);
+                    changed = true;
                 }
+            }
+            if (changed) {
+                broadcastSalasActivas();
             }
         }
     }
 
     // --- Helper methods ---
+
+    private void broadcastSalasActivas() {
+        try {
+            List<SalaResponse> activas = buscarSalas(null, null, null);
+            messagingTemplate.convertAndSend("/topic/salas", activas);
+        } catch (Exception e) {
+            System.err.println("Error broadcasting salas: " + e.getMessage());
+        }
+    }
 
     private Usuario getUsuarioFromToken(String token) {
         String cleanToken = token;
